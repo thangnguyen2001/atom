@@ -338,6 +338,10 @@ const configSchema = {
             description: 'Native operating system APIs'
           },
           {
+            value: 'experimental',
+            description: 'Experimental filesystem watching library'
+          },
+          {
             value: 'atom',
             description: 'Emulated with Atom events'
           }
