@@ -5,6 +5,7 @@ const path = require('path')
 
 const {Emitter, Disposable, CompositeDisposable} = require('event-kit')
 const nsfw = require('@atom/nsfw')
+const watcher = require('@atom/watcher')
 const {NativeWatcherRegistry} = require('./native-watcher-registry')
 
 // Private: Associate native watcher action flags with descriptive String equivalents.
@@ -512,46 +513,109 @@ class PathWatcher {
   }
 }
 
-// Private: Globally tracked state used to de-duplicate related [PathWatchers]{PathWatcher}.
+// Private: Globally tracked state used to de-duplicate related [PathWatchers]{PathWatcher} backed by emulated Atom
+// events or NSFW.
 class PathWatcherManager {
 
-  // Private: Access or lazily initialize the singleton manager instance.
-  //
-  // Returns the one and only {PathWatcherManager}.
-  static instance () {
-    if (!PathWatcherManager.theManager) {
-      PathWatcherManager.theManager = new PathWatcherManager()
+  // Private: Access the currently active manager instance, creating one if necessary.
+  static active () {
+    if (!this.activeManager) {
+      this.activeManager = new PathWatcherManager(atom.config.get('core.fileSystemWatcher'))
+      this.sub = atom.config.onDidChange('core.fileSystemWatcher', ({newValue}) => { this.transitionTo(newValue) })
     }
-    return PathWatcherManager.theManager
+    return this.activeManager
+  }
+
+  // Private: Replace the active {PathWatcherManager} with a new one that creates [NativeWatchers]{NativeWatcher}
+  // based on the value of `setting`.
+  static async transitionTo (setting) {
+    const current = this.active()
+
+    if (this.transitionPromise) {
+      await this.transitionPromise
+    }
+
+    if (current.setting === setting) {
+      return
+    }
+    current.isShuttingDown = true
+
+    let resolveTransitionPromise = () => {}
+    this.transitionPromise = new Promise(resolve => {
+      resolveTransitionPromise = resolve
+    })
+
+    const replacement = new PathWatcherManager(setting)
+    this.activeManager = replacement
+
+    await Promise.all(
+      Array.from(current.live, async ([root, native]) => {
+        const w = await replacement.createWatcher(root, {}, () => {})
+        native.reattachTo(w.native, root, w.native.options || {})
+      })
+    )
+
+    current.stopAllWatchers()
+
+    resolveTransitionPromise()
+    this.transitionPromise = null
   }
 
   // Private: Initialize global {PathWatcher} state.
-  constructor () {
-    this.live = new Set()
-    this.nativeRegistry = new NativeWatcherRegistry(
-      normalizedPath => {
-        const nativeWatcher = new NativeWatcher(normalizedPath)
+  constructor (setting) {
+    this.setting = setting
+    this.live = new Map()
 
-        this.live.add(nativeWatcher)
-        const sub = nativeWatcher.onWillStop(() => {
-          this.live.delete(nativeWatcher)
-          sub.dispose()
-        })
+    const initLocal = NativeConstructor => {
+      this.nativeRegistry = new NativeWatcherRegistry(
+        normalizedPath => {
+          const nativeWatcher = new NativeConstructor(normalizedPath)
 
-        return nativeWatcher
-      }
-    )
+          this.live.set(normalizedPath, nativeWatcher)
+          const sub = nativeWatcher.onWillStop(() => {
+            this.live.delete(normalizedPath)
+            sub.dispose()
+          })
+
+          return nativeWatcher
+        }
+      )
+    }
+
+    if (setting === 'atom') {
+      initLocal(AtomNativeWatcher)
+    } else if (setting !== 'experimental') {
+      initLocal(NSFWNativeWatcher)
+    }
+
+    this.isShuttingDown = false
   }
 
   // Private: Create a {PathWatcher} tied to this global state. See {watchPath} for detailed arguments.
-  createWatcher (rootPath, options, eventCallback) {
-    const watcher = new PathWatcher(this.nativeRegistry, rootPath, options)
-    watcher.onDidChange(eventCallback)
-    return watcher
+  async createWatcher (rootPath, options, eventCallback) {
+    if (this.isShuttingDown) {
+      await this.constructor.transitionPromise
+      return PathWatcherManager.active().createWatcher(rootPath, options, eventCallback)
+    }
+
+    if (this.setting === 'experimental') {
+      const w = await watcher.watchPath(rootPath, options, eventCallback)
+      this.live.set(rootPath, w.native)
+      return w
+    }
+
+    const w = new PathWatcher(this.nativeRegistry, rootPath, options)
+    w.onDidChange(eventCallback)
+    await w.getStartPromise()
+    return w
   }
 
   // Private: Return a {String} depicting the currently active native watchers.
   print () {
+    if (this.setting === 'experimental') {
+      return watcher.printWatchers()
+    }
+
     return this.nativeRegistry.print()
   }
 
@@ -559,8 +623,12 @@ class PathWatcherManager {
   //
   // Returns a {Promise} that resolves when all native watcher resources are disposed.
   stopAllWatchers () {
+    if (this.setting === 'experimental') {
+      return watcher.stopAllWatchers()
+    }
+
     return Promise.all(
-      Array.from(this.live, watcher => watcher.stop())
+      Array.from(this.live, ([,w]) => w.stop())
     )
   }
 }
@@ -605,19 +673,22 @@ class PathWatcherManager {
 // ```
 //
 function watchPath (rootPath, options, eventCallback) {
-  const watcher = PathWatcherManager.instance().createWatcher(rootPath, options, eventCallback)
-  return watcher.getStartPromise().then(() => watcher)
+  return PathWatcherManager.active().createWatcher(rootPath, options, eventCallback)
 }
 
 // Private: Return a Promise that resolves when all {NativeWatcher} instances associated with a FileSystemManager
 // have stopped listening. This is useful for `afterEach()` blocks in unit tests.
 function stopAllWatchers () {
-  return PathWatcherManager.instance().stopAllWatchers()
+  return PathWatcherManager.active().stopAllWatchers()
 }
 
 // Private: Show the currently active native watchers.
-function printWatchers () {
-  return PathWatcherManager.instance().print()
+watchPath.printWatchers = function () {
+  return PathWatcherManager.active().print()
 }
 
-module.exports = {watchPath, stopAllWatchers, printWatchers}
+watchPath.configure = function (...args) {
+  return watcher.configure(...args)
+}
+
+module.exports = {watchPath, stopAllWatchers}
