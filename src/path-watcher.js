@@ -23,145 +23,7 @@ const WATCHER_STATE = {
   STOPPING: Symbol('stopping')
 }
 
-// Private: Emulate a "filesystem watcher" by subscribing to Atom events like buffers being saved. This will miss
-// any changes made to files outside of Atom, but it also has no overhead.
-class AtomBackend {
-  async start (rootPath, eventCallback, errorCallback) {
-    const getRealPath = givenPath => {
-      return new Promise(resolve => {
-        fs.realpath(givenPath, (err, resolvedPath) => {
-          err ? resolve(null) : resolve(resolvedPath)
-        })
-      })
-    }
-
-    this.subs = new CompositeDisposable()
-
-    this.subs.add(atom.workspace.observeTextEditors(async editor => {
-      let realPath = await getRealPath(editor.getPath())
-      if (!realPath || !realPath.startsWith(rootPath)) {
-        return
-      }
-
-      const announce = (action, oldPath) => {
-        const payload = {action, path: realPath}
-        if (oldPath) payload.oldPath = oldPath
-        eventCallback([payload])
-      }
-
-      const buffer = editor.getBuffer()
-
-      this.subs.add(buffer.onDidConflict(() => announce('modified')))
-      this.subs.add(buffer.onDidReload(() => announce('modified')))
-      this.subs.add(buffer.onDidSave(event => {
-        if (event.path === realPath) {
-          announce('modified')
-        } else {
-          const oldPath = realPath
-          realPath = event.path
-          announce('renamed', oldPath)
-        }
-      }))
-
-      this.subs.add(buffer.onDidDelete(() => announce('deleted')))
-
-      this.subs.add(buffer.onDidChangePath(newPath => {
-        if (newPath !== realPath) {
-          const oldPath = realPath
-          realPath = newPath
-          announce('renamed', oldPath)
-        }
-      }))
-    }))
-
-    // Giant-ass brittle hack to hook files (and eventually directories) created from the TreeView.
-    const treeViewPackage = await atom.packages.getLoadedPackage('tree-view')
-    if (!treeViewPackage) return
-    await treeViewPackage.activationPromise
-    const treeViewModule = treeViewPackage.mainModule
-    if (!treeViewModule) return
-    const treeView = treeViewModule.getTreeViewInstance()
-
-    const isOpenInEditor = async eventPath => {
-      const openPaths = await Promise.all(
-        atom.workspace.getTextEditors().map(editor => getRealPath(editor.getPath()))
-      )
-      return openPaths.includes(eventPath)
-    }
-
-    this.subs.add(treeView.onFileCreated(async event => {
-      const realPath = await getRealPath(event.path)
-      if (!realPath) return
-
-      eventCallback([{action: 'added', path: realPath}])
-    }))
-
-    this.subs.add(treeView.onEntryDeleted(async event => {
-      const realPath = await getRealPath(event.path)
-      if (!realPath || isOpenInEditor(realPath)) return
-
-      eventCallback([{action: 'deleted', path: realPath}])
-    }))
-
-    this.subs.add(treeView.onEntryMoved(async event => {
-      const [realNewPath, realOldPath] = await Promise.all([
-        getRealPath(event.newPath),
-        getRealPath(event.initialPath)
-      ])
-      if (!realNewPath || !realOldPath || isOpenInEditor(realNewPath) || isOpenInEditor(realOldPath)) return
-
-      eventCallback([{action: 'renamed', path: realNewPath, oldPath: realOldPath}])
-    }))
-  }
-
-  async stop () {
-    this.subs && this.subs.dispose()
-  }
-}
-
-// Private: Implement a native watcher by translating events from an NSFW watcher.
-class NSFWBackend {
-  async start (rootPath, eventCallback, errorCallback) {
-    const handler = events => {
-      eventCallback(events.map(event => {
-        const action = ACTION_MAP.get(event.action) || `unexpected (${event.action})`
-        const payload = {action}
-
-        if (event.file) {
-          payload.path = path.join(event.directory, event.file)
-        } else {
-          payload.oldPath = path.join(event.directory, event.oldFile)
-          payload.path = path.join(event.directory, event.newFile)
-        }
-
-        return payload
-      }))
-    }
-
-    this.watcher = await nsfw(
-      rootPath,
-      handler,
-      {debounceMS: 100, errorCallback}
-    )
-
-    await this.watcher.start()
-  }
-
-  stop () {
-    return this.watcher.stop()
-  }
-}
-
-// Private: Map configuration settings from the feature flag to backend implementations.
-const BACKENDS = {
-  atom: AtomBackend,
-  native: NSFWBackend
-}
-
-// Private: the backend implementation to fall back to if the config setting is invalid.
-const DEFAULT_BACKEND = BACKENDS.nsfw
-
-// Private: Interface with and normalize events from a native OS filesystem watcher.
+// Private: Interface with and normalize events from a filesystem watcher implementation.
 class NativeWatcher {
 
   // Private: Initialize a native watcher on a path.
@@ -172,37 +34,10 @@ class NativeWatcher {
     this.emitter = new Emitter()
     this.subs = new CompositeDisposable()
 
-    this.backend = null
     this.state = WATCHER_STATE.STOPPED
 
     this.onEvents = this.onEvents.bind(this)
     this.onError = this.onError.bind(this)
-
-    this.subs.add(atom.config.onDidChange('core.fileSystemWatcher', async () => {
-      if (this.state === WATCHER_STATE.STARTING) {
-        // Wait for this watcher to finish starting.
-        await new Promise(resolve => {
-          const sub = this.onDidStart(() => {
-            sub.dispose()
-            resolve()
-          })
-        })
-      }
-
-      // Re-read the config setting in case it's changed again while we were waiting for the watcher
-      // to start.
-      const Backend = this.getCurrentBackend()
-      if (this.state === WATCHER_STATE.RUNNING && !(this.backend instanceof Backend)) {
-        await this.stop()
-        await this.start()
-      }
-    }))
-  }
-
-  // Private: Read the `core.fileSystemWatcher` setting to determine the filesystem backend to use.
-  getCurrentBackend () {
-    const setting = atom.config.get('core.fileSystemWatcher')
-    return BACKENDS[setting] || DEFAULT_BACKEND
   }
 
   // Private: Begin watching for filesystem events.
@@ -214,13 +49,14 @@ class NativeWatcher {
     }
     this.state = WATCHER_STATE.STARTING
 
-    const Backend = this.getCurrentBackend()
-
-    this.backend = new Backend()
-    await this.backend.start(this.normalizedPath, this.onEvents, this.onError)
+    await this.doStart()
 
     this.state = WATCHER_STATE.RUNNING
     this.emitter.emit('did-start')
+  }
+
+  doStart () {
+    return Promise.reject('doStart() not overridden')
   }
 
   // Private: Return true if the underlying watcher is actively listening for filesystem events.
@@ -285,8 +121,8 @@ class NativeWatcher {
   //
   // * `replacement` the new {NativeWatcher} instance that a live {Watcher} instance should reattach to instead.
   // * `watchedPath` absolute path watched by the new {NativeWatcher}.
-  reattachTo (replacement, watchedPath) {
-    this.emitter.emit('should-detach', {replacement, watchedPath})
+  reattachTo (replacement, watchedPath, options) {
+    this.emitter.emit('should-detach', {replacement, watchedPath, options})
   }
 
   // Private: Stop the native watcher and release any operating system resources associated with it.
@@ -299,10 +135,15 @@ class NativeWatcher {
     this.state = WATCHER_STATE.STOPPING
     this.emitter.emit('will-stop')
 
-    await this.backend.stop()
+    await this.doStop()
+
     this.state = WATCHER_STATE.STOPPED
 
     this.emitter.emit('did-stop')
+  }
+
+  doStop () {
+    return Promise.resolve()
   }
 
   // Private: Detach any event subscribers.
@@ -323,6 +164,129 @@ class NativeWatcher {
   // * `err` The native filesystem error.
   onError (err) {
     this.emitter.emit('did-error', err)
+  }
+}
+
+// Private: Emulate a "filesystem watcher" by subscribing to Atom events like buffers being saved. This will miss
+// any changes made to files outside of Atom, but it also has no overhead.
+class AtomNativeWatcher extends NativeWatcher {
+  async doStart () {
+    const getRealPath = givenPath => {
+      return new Promise(resolve => {
+        fs.realpath(givenPath, (err, resolvedPath) => {
+          err ? resolve(null) : resolve(resolvedPath)
+        })
+      })
+    }
+
+    this.subs.add(atom.workspace.observeTextEditors(async editor => {
+      let realPath = await getRealPath(editor.getPath())
+      if (!realPath || !realPath.startsWith(this.normalizedPath)) {
+        return
+      }
+
+      const announce = (action, oldPath) => {
+        const payload = {action, path: realPath}
+        if (oldPath) payload.oldPath = oldPath
+        this.onEvents([payload])
+      }
+
+      const buffer = editor.getBuffer()
+
+      this.subs.add(buffer.onDidConflict(() => announce('modified')))
+      this.subs.add(buffer.onDidReload(() => announce('modified')))
+      this.subs.add(buffer.onDidSave(event => {
+        if (event.path === realPath) {
+          announce('modified')
+        } else {
+          const oldPath = realPath
+          realPath = event.path
+          announce('renamed', oldPath)
+        }
+      }))
+
+      this.subs.add(buffer.onDidDelete(() => announce('deleted')))
+
+      this.subs.add(buffer.onDidChangePath(newPath => {
+        if (newPath !== this.normalizedPath) {
+          const oldPath = this.normalizedPath
+          this.normalizedPath = newPath
+          announce('renamed', oldPath)
+        }
+      }))
+    }))
+
+    // Giant-ass brittle hack to hook files (and eventually directories) created from the TreeView.
+    const treeViewPackage = await atom.packages.getLoadedPackage('tree-view')
+    if (!treeViewPackage) return
+    await treeViewPackage.activationPromise
+    const treeViewModule = treeViewPackage.mainModule
+    if (!treeViewModule) return
+    const treeView = treeViewModule.getTreeViewInstance()
+
+    const isOpenInEditor = async eventPath => {
+      const openPaths = await Promise.all(
+        atom.workspace.getTextEditors().map(editor => getRealPath(editor.getPath()))
+      )
+      return openPaths.includes(eventPath)
+    }
+
+    this.subs.add(treeView.onFileCreated(async event => {
+      const realPath = await getRealPath(event.path)
+      if (!realPath) return
+
+      this.onEvents([{action: 'added', path: realPath}])
+    }))
+
+    this.subs.add(treeView.onEntryDeleted(async event => {
+      const realPath = await getRealPath(event.path)
+      if (!realPath || isOpenInEditor(realPath)) return
+
+      this.onEvents([{action: 'deleted', path: realPath}])
+    }))
+
+    this.subs.add(treeView.onEntryMoved(async event => {
+      const [realNewPath, realOldPath] = await Promise.all([
+        getRealPath(event.newPath),
+        getRealPath(event.initialPath)
+      ])
+      if (!realNewPath || !realOldPath || isOpenInEditor(realNewPath) || isOpenInEditor(realOldPath)) return
+
+      this.onEvents([{action: 'renamed', path: realNewPath, oldPath: realOldPath}])
+    }))
+  }
+}
+
+// Private: Implement a native watcher by translating events from an NSFW watcher.
+class NSFWNativeWatcher extends NativeWatcher {
+  async doStart (rootPath, eventCallback, errorCallback) {
+    const handler = events => {
+      this.onEvents(events.map(event => {
+        const action = ACTION_MAP.get(event.action) || `unexpected (${event.action})`
+        const payload = {action}
+
+        if (event.file) {
+          payload.path = path.join(event.directory, event.file)
+        } else {
+          payload.oldPath = path.join(event.directory, event.oldFile)
+          payload.path = path.join(event.directory, event.newFile)
+        }
+
+        return payload
+      }))
+    }
+
+    this.watcher = await nsfw(
+      this.normalizedPath,
+      handler,
+      {debounceMS: 100, errorCallback: this.onError}
+    )
+
+    await this.watcher.start()
+  }
+
+  doStop () {
+    return this.watcher.stop()
   }
 }
 
