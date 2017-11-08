@@ -628,7 +628,7 @@ class PathWatcherManager {
     }
 
     return Promise.all(
-      Array.from(this.live, ([,w]) => w.stop())
+      Array.from(this.live, ([, w]) => w.stop())
     )
   }
 }
