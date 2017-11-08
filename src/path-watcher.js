@@ -610,6 +610,24 @@ class PathWatcherManager {
     return w
   }
 
+  // Private: Directly access the {NativeWatcherRegistry}.
+  getRegistry () {
+    if (this.setting === 'experimental') {
+      return watcher.getRegistry()
+    }
+
+    return this.nativeRegistry
+  }
+
+  // Private: Sample watcher usage statistics. Only available for experimental watchers.
+  status () {
+    if (this.setting === 'experimental') {
+      return watcher.status()
+    }
+
+    return {}
+  }
+
   // Private: Return a {String} depicting the currently active native watchers.
   print () {
     if (this.setting === 'experimental') {
@@ -682,11 +700,22 @@ function stopAllWatchers () {
   return PathWatcherManager.active().stopAllWatchers()
 }
 
-// Private: Show the currently active native watchers.
+// Private: Show the currently active native watchers in a formatted {String}.
 watchPath.printWatchers = function () {
   return PathWatcherManager.active().print()
 }
 
+// Private: Access the active {NativeWatcherRegistry}.
+watchPath.getRegistry = function () {
+  return PathWatcherManager.active().getRegistry()
+}
+
+// Private: Sample usage statistics for the active watcher.
+watchPath.status = function () {
+  return PathWatcherManager.active().status()
+}
+
+// Private: Configure @atom/watcher ("experimental") directly.
 watchPath.configure = function (...args) {
   return watcher.configure(...args)
 }
