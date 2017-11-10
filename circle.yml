@@ -6,7 +6,7 @@ machine:
     TEST_JUNIT_XML_ROOT: ${CIRCLE_TEST_REPORTS}
 
   xcode:
-    version: 8.2
+    version: 7.3
 
 general:
   artifacts:
