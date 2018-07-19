@@ -1,0 +1,17 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.12.0
+ignore: {}
+# patches apply the minimum changes required to fix a vulnerability
+patch:
+  'npm:hoek:20180212':
+    - atom-package-manager > npm > request > hawk > hoek:
+        patched: '2018-07-19T14:26:23.087Z'
+    - atom-package-manager > npm > request > hawk > boom > hoek:
+        patched: '2018-07-19T14:26:23.087Z'
+    - atom-package-manager > npm > request > hawk > sntp > hoek:
+        patched: '2018-07-19T14:26:23.087Z'
+    - atom-package-manager > npm > request > hawk > cryptiles > boom > hoek:
+        patched: '2018-07-19T14:26:23.087Z'
+  'npm:tunnel-agent:20170305':
+    - atom-package-manager > npm > request > tunnel-agent:
+        patched: '2018-07-19T14:26:23.087Z'
