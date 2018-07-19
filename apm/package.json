@@ -6,6 +6,12 @@
     "url": "https://github.com/atom/atom.git"
   },
   "dependencies": {
-    "atom-package-manager": "1.18.10"
-  }
+    "atom-package-manager": "1.18.10",
+    "snyk": "^1.89.0"
+  },
+  "scripts": {
+    "snyk-protect": "snyk protect",
+    "prepare": "npm run snyk-protect"
+  },
+  "snyk": true
 }
