@@ -1,5 +1,5 @@
 # Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
-version: v1.12.0
+version: v1.13.5
 ignore: {}
 # patches apply the minimum changes required to fix a vulnerability
 patch:
@@ -15,3 +15,14 @@ patch:
   'npm:tunnel-agent:20170305':
     - atom-package-manager > npm > request > tunnel-agent:
         patched: '2018-07-19T14:26:23.087Z'
+  SNYK-JS-HTTPSPROXYAGENT-469131:
+    - atom-package-manager > npm > pacote > make-fetch-happen > https-proxy-agent:
+        patched: '2019-10-04T02:28:51.569Z'
+    - atom-package-manager > npm > npm-profile > make-fetch-happen > https-proxy-agent:
+        patched: '2019-10-04T02:28:51.569Z'
+    - atom-package-manager > npm > npm-registry-fetch > make-fetch-happen > https-proxy-agent:
+        patched: '2019-10-04T02:28:51.569Z'
+    - atom-package-manager > npm > libcipm > pacote > make-fetch-happen > https-proxy-agent:
+        patched: '2019-10-04T02:28:51.569Z'
+    - atom-package-manager > npm > libnpmhook > npm-registry-fetch > make-fetch-happen > https-proxy-agent:
+        patched: '2019-10-04T02:28:51.569Z'
