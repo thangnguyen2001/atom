@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "atom-package-manager": "2.0.0",
-    "snyk": "^1.89.0"
+    "snyk": "^1.231.0"
   },
   "scripts": {
     "snyk-protect": "snyk protect",
