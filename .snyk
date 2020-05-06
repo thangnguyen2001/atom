@@ -1,0 +1,12 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.14.1
+ignore: {}
+# patches apply the minimum changes required to fix a vulnerability
+patch:
+  'npm:minimatch:20160620':
+    - jasmine-tagged > jasmine-focused > jasmine-node > gaze > fileset > glob > minimatch:
+        patched: '2020-05-06T00:45:57.356Z'
+    - jasmine-tagged > jasmine-focused > jasmine-node > gaze > fileset > minimatch:
+        patched: '2020-05-06T00:45:57.356Z'
+    - jasmine-tagged > jasmine-focused > jasmine-node > gaze > minimatch:
+        patched: '2020-05-06T00:45:57.356Z'
