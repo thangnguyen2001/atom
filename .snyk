@@ -1,0 +1,29 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.19.0
+ignore: {}
+# patches apply the minimum changes required to fix a vulnerability
+patch:
+  'npm:debug:20170905':
+    - text-buffer > fs-admin > mocha > debug:
+        patched: '2020-10-21T17:06:45.842Z'
+  'npm:hoek:20180212':
+    - less-cache > less > request > hawk > hoek:
+        patched: '2020-10-21T17:06:45.842Z'
+    - less-cache > less > request > hawk > boom > hoek:
+        patched: '2020-10-21T17:06:45.842Z'
+    - less-cache > less > request > hawk > sntp > hoek:
+        patched: '2020-10-21T17:06:45.842Z'
+    - less-cache > less > request > hawk > cryptiles > boom > hoek:
+        patched: '2020-10-21T17:06:45.842Z'
+  'npm:lodash:20180130':
+    - babel-core > babel-plugin-proto-to-assign > lodash:
+        patched: '2020-10-21T17:06:45.842Z'
+  'npm:minimatch:20160620':
+    - scandal > minimatch:
+        patched: '2020-10-21T17:06:45.842Z'
+    - jasmine-tagged > jasmine-focused > jasmine-node > gaze > fileset > glob > minimatch:
+        patched: '2020-10-21T17:06:45.842Z'
+    - jasmine-tagged > jasmine-focused > jasmine-node > gaze > fileset > minimatch:
+        patched: '2020-10-21T17:06:45.842Z'
+    - jasmine-tagged > jasmine-focused > jasmine-node > gaze > minimatch:
+        patched: '2020-10-21T17:06:45.842Z'
