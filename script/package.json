@@ -32,7 +32,7 @@
     "standard": "8.4.0",
     "sync-request": "3.0.1",
     "tello": "1.0.5",
-    "webdriverio": "2.4.5",
+    "webdriverio": "5.0.0",
     "yargs": "4.8.1"
   }
 }
