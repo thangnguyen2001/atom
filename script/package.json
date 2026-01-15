@@ -3,7 +3,7 @@
   "description": "Atom build scripts",
   "dependencies": {
     "async": "2.0.1",
-    "babel-core": "5.8.38",
+    "babel-core": "6.9.0",
     "coffeelint": "1.15.7",
     "colors": "1.1.2",
     "csslint": "1.0.2",
@@ -11,7 +11,7 @@
     "electron-chromedriver": "~1.6",
     "electron-link": "0.1.2",
     "electron-mksnapshot": "~1.6",
-    "electron-packager": "7.3.0",
+    "electron-packager": "17.1.2",
     "electron-winstaller": "2.6.3",
     "fs-admin": "^0.1.5",
     "fs-extra": "0.30.0",
@@ -32,7 +32,7 @@
     "standard": "8.4.0",
     "sync-request": "3.0.1",
     "tello": "1.0.5",
-    "webdriverio": "2.4.5",
+    "webdriverio": "5.0.0",
     "yargs": "4.8.1"
   }
 }
