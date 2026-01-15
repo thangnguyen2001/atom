@@ -6,7 +6,7 @@
     "url": "https://github.com/atom/atom.git"
   },
   "dependencies": {
-    "atom-package-manager": "2.0.0",
+    "atom-package-manager": "2.0.1",
     "snyk": "^1.89.0"
   },
   "scripts": {
