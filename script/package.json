@@ -11,7 +11,7 @@
     "electron-chromedriver": "~1.6",
     "electron-link": "0.1.2",
     "electron-mksnapshot": "~1.6",
-    "electron-packager": "7.3.0",
+    "electron-packager": "13.0.0",
     "electron-winstaller": "2.6.3",
     "fs-admin": "^0.1.5",
     "fs-extra": "0.30.0",
