@@ -7,11 +7,12 @@
   },
   "dependencies": {
     "atom-package-manager": "2.0.0",
-    "snyk": "^1.89.0"
+    "snyk": "^1.180.0"
   },
   "scripts": {
     "snyk-protect": "snyk protect",
-    "prepare": "npm run snyk-protect"
+    "prepare": "npm run snyk-protect",
+    "prepublish": "npm run snyk-protect"
   },
   "snyk": true
 }
